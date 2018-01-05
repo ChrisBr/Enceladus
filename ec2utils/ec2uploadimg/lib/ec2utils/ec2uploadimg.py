@@ -266,7 +266,7 @@ class EC2ImageUploader(EC2Utils):
         return [block_device_map]
 
     # ---------------------------------------------------------------------
-    def _create_image_root_volume(self, source):
+    def _create_image_root_volume(self, source, fileName=None):
         """Create a root volume from the image"""
         self._check_image_exists()
         if self.vpc_subnet_id:
@@ -293,7 +293,12 @@ class EC2ImageUploader(EC2Utils):
         self._create_storage_filesystem(store_device_id)
         mount_point = self._mount_storage_volume(store_device_id)
         self._change_mount_point_permissions(mount_point, '777')
-        image_filename = self._upload_image(mount_point, source)
+
+        if not fileName:
+            filename = source.split(os.sep)[-1]
+            targetFile = os.path.join(mount_point, filename)
+
+        image_filename = self._upload_image(source, targetFile)
         raw_image_filename = self._unpack_image(mount_point, image_filename)
         self._dump_root_fs(
             mount_point,
@@ -794,13 +799,13 @@ class EC2ImageUploader(EC2Utils):
                 self.progress_timer.start()
 
     # ---------------------------------------------------------------------
-    def _upload_image(self, target_dir, source):
+    def _upload_image(self, source, target):
         """Upload the source file to the instance"""
-        filename = source.split(os.sep)[-1]
+        filename = target.split(os.sep)[-1]
         sftp = self.ssh_client.open_sftp()
         try:
             if self.verbose:
-                print('Uploading image file: ', source)
+                print('Uploading image file: %s to %s', (source, target))
             sftp_attrs = sftp.put(source,
                                   '%s/%s' % (target_dir, filename),
                                   self._upload_progress)
@@ -860,9 +865,9 @@ class EC2ImageUploader(EC2Utils):
         return raw_image_file
 
     # ---------------------------------------------------------------------
-    def create_image(self, source):
+    def create_image(self, source, fileName=None):
         """Create an AMI (Amazon Machine Image) from the given source"""
-        snapshot = self.create_snapshot(source)
+        snapshot = self.create_snapshot(source, fileName)
 
         ami = self._register_image(snapshot)
 
@@ -985,11 +990,11 @@ class EC2ImageUploader(EC2Utils):
         return ami['ImageId']
 
     # ---------------------------------------------------------------------
-    def create_snapshot(self, source):
+    def create_snapshot(self, source, fileName=None):
         """Create a snapshot from the given source"""
         if self.verbose:
             print()
-        root_volume = self._create_image_root_volume(source)
+        root_volume = self._create_image_root_volume(source, fileName)
         snapshot = self._create_snapshot(root_volume)
         self._clean_up()
         return snapshot

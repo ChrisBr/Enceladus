@@ -187,6 +187,11 @@ argparse.add_argument(
     type=int
 )
 argparse.add_argument(
+    '--target-filename',
+    dest="targetFilename",
+    help='The target filename'
+)
+argparse.add_argument(
     '-t', '--type',
     dest='instType',
     help='Instance type to use to upload image (Optional)',
@@ -541,7 +546,7 @@ try:
             ami = uploader.create_image_use_root_swap(args.source)
             print('Created image: ', ami)
         else:
-            ami = uploader.create_image(args.source)
+            ami = uploader.create_image(args.source, args.targetFilename)
             print('Created image: ', ami)
 except EC2UploadImgException as e:
     print(format(e), file=sys.stderr)
