@@ -61,6 +61,13 @@ argparse.add_argument(
     metavar='AWS_AKI_ID'
 )
 argparse.add_argument(
+    '--create-temporary-security-group',
+    action='store_true',
+    default=False,
+    dest='createTemporarySecurityGroup',
+    help='Creates a temporary security group with SSH port 22 open'
+)
+argparse.add_argument(
     '-d', '--description',
     dest='descript',
     help='Image description, will also be used for the snapshot',
@@ -509,6 +516,7 @@ try:
                           backing_store=args.backingStore,
                           billing_codes=args.billingCodes,
                           bootkernel=bootkernel,
+                          create_temporary_security_group=args.createTemporarySecurityGroup,
                           ena_support=args.ena,
                           image_arch=args.arch,
                           image_description=args.descript,

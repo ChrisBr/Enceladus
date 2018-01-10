@@ -35,6 +35,7 @@ class EC2ImageUploader(EC2Utils):
                  backing_store='ssd',
                  billing_codes=None,
                  bootkernel=None,
+                 create_temporary_security_group=False,
                  config=None,
                  ena_support=False,
                  image_arch='x86_64',
@@ -64,6 +65,7 @@ class EC2ImageUploader(EC2Utils):
         self.backing_store = backing_store
         self.billing_codes = billing_codes
         self.bootkernel = bootkernel
+        self.create_temporary_security_group = create_temporary_security_group
         self.ena_support = ena_support
         self.image_arch = image_arch
         self.image_description = image_description
@@ -97,6 +99,7 @@ class EC2ImageUploader(EC2Utils):
         self.region = None
         self.ssh_client = None
         self.storage_volume_size = 2 * self.root_volume_size
+        self.temporary_security_group_id = ''
 
     # ---------------------------------------------------------------------
     def _attach_volume(self, instance, volume, device=None):
@@ -153,6 +156,37 @@ class EC2ImageUploader(EC2Utils):
             if image['Name'] == self.image_name:
                 msg = 'Image with name "%s" already exists' % self.image_name
                 raise EC2UploadImgException(msg)
+
+    # ---------------------------------------------------------------------
+    def _create_temporary_security_group(self):
+        """Create a temporary security group"""
+        try:
+            group_name = 'uploader-%s-%s' % (self.image_name, random.randint(1,100))
+            group_description = 'obs-uploader created %s' % datetime.datetime.now()
+            response = self._connect().create_security_group(GroupName=group_name,
+                                         Description=group_description,
+                                         VpcId=self.vpc_subnet_id)
+
+            security_group_id = response['GroupId']
+            print('Temporary Security Group Created %s in vpc %s' % (security_group_id, self.vpc_subnet_id))
+            data = self._connect().authorize_security_group_ingress(
+                GroupId=security_group_id,
+                IpPermissions=[
+                    {'IpProtocol': 'tcp',
+                     'FromPort': 22,
+                     'ToPort': 22,
+                     'IpRanges': [{'CidrIp': '0.0.0.0/0'}]}
+                ])
+            self.temporary_security_group_id = security_group_id
+            if not self.security_group_ids:
+                self.security_group_ids += security_group_id
+            else:
+                self.security_group_ids += ",%s" % (security_group_id)
+            print("Successfully allowed incoming SSH port 22 for security group %s in %s" % (security_group_id, self.vpc_subnet_id))
+        except Exception as e:
+            print(e)
+            error_msg = 'Can not create temporary security group.'
+            raise EC2UploadImgException(error_msg)
 
     # ---------------------------------------------------------------------
     def _check_security_groups_exist(self):
@@ -239,6 +273,33 @@ class EC2ImageUploader(EC2Utils):
                 self._detach_volume(volume, True)
                 self._remove_volume(volume)
 
+        if self.temporary_security_group_id:
+            waiter = self._connect().get_waiter('instance_terminated')
+            repeat_count = 1
+            error_msg = 'Instance did not terminate within allotted time'
+            while repeat_count <= self.wait_count:
+                try:
+                    wait_status = waiter.wait(
+                        InstanceIds=[self.helper_instance['InstanceId']],
+                        Filters=[
+                            {
+                                'Name': 'instance-state-name',
+                                'Values': ['terminated']
+                            }
+                        ]
+                    )
+                except:
+                    wait_status = 1
+                if self.verbose:
+                    self.progress_timer.cancel()
+                repeat_count = self._check_wait_status(
+                    wait_status,
+                    error_msg,
+                    repeat_count
+                )
+            self._connect().delete_security_group(GroupId=self.temporary_security_group_id)
+
+        self.temporary_security_group_id = ""
         self.created_volumes = []
         self.instance_ids = []
 
@@ -271,6 +332,8 @@ class EC2ImageUploader(EC2Utils):
         self._check_image_exists()
         if self.vpc_subnet_id:
             self._check_subnet_exists()
+        if self.create_temporary_security_group:
+            self._create_temporary_security_group()
         if self.security_group_ids:
             self._check_security_groups_exist()
         if self.running_id:
