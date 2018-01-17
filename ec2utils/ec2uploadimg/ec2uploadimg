@@ -437,7 +437,7 @@ try:
                                               '--type')
 
         key_pair_name = args.sshName
-        if not key_pair_name:
+        if not key_pair_name and args.accountName:
             key_pair_name = utils.get_from_config(args.accountName,
                                                   config,
                                                   region,
@@ -445,7 +445,7 @@ try:
                                                   '--ssh-key-pair')
 
         ssh_private_key_file = args.privateKey
-        if not ssh_private_key_file:
+        if not ssh_private_key_file and args.accountName:
             ssh_private_key_file = utils.get_from_config(args.accountName,
                                                          config,
                                                          region,
