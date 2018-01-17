@@ -376,8 +376,10 @@ class EC2ImageUploader(EC2Utils):
     def _create_upload_key_pair(self, key_name='temporary_ec2_uploadkey'):
         if self.verbose:
             print('Creating temporary key pair')
-        home_dir = os.path.expanduser('~/')
-        fd, location = mkstemp(prefix='temporary_ec2_uploadkey.', suffix='.key', dir=home_dir)
+        dir_path = os.path.expanduser('~/')
+        if not os.access(dir_path, os.W_OK):
+            dir_path = '/tmp/'
+        fd, location = mkstemp(prefix='temporary_ec2_uploadkey.', suffix='.key', dir=dir_path)
         self.ssh_key_pair_name = os.path.basename(location)
         self.ssh_key_private_key_file = location
         secret_key_content = self._connect().create_key_pair(KeyName=self.ssh_key_pair_name)
